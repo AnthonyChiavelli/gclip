@@ -12,10 +12,8 @@ static int init(void);
 static void xit(void);
 static ssize_t gclip_read( struct file *, char *, size_t, loff_t *);
 static ssize_t gclip_write (struct file *, const char __user *, size_t, loff_t *);
-static char *buffer;
-static f_pos = 0;
-static wr_ptr = 0;
-static clip_num = 0;
+static int f_pos = 0;
+static int wr_ptr = 0;
 static char *wr_buffer;
 
 
@@ -26,10 +24,11 @@ typedef struct clipping {
 } clipping;
 
 
-/* For linked list*/
-static clipping *head;
-static clipping *tail;
-static int clip_count;
+/* Allocate new clipping */
+static clipping *new_clipping(size_t);
+
+/* Top of stack*/
+static clipping *top = NULL;
 
 /* Represents functions called when various actions taken on file*/
 static struct file_operations fops = 
@@ -42,16 +41,12 @@ static struct file_operations fops =
 
 
 static int init(void) {
-  printk(KERN_WARNING "ini called\n");
   int ret_val;
   /*register a char device */
   if ((ret_val = register_chrdev(0, dev_name, &fops)) == -1 ) {
   /* Driver registration failed */
     printk(KERN_WARNING "Gclip: device register failed");
     return ret_val;
-    
-  
-  
   }
   else {
     /* driver registration sucessful*/
@@ -63,6 +58,7 @@ static int init(void) {
 }
 
 static void xit(void) {
+  /* Unregister if needed */
   if (major_no != -1) {
     unregister_chrdev(major_no, dev_name);
   }
@@ -72,22 +68,29 @@ static void xit(void) {
 module_init(init);
 module_exit(xit);
 
-
-
 static ssize_t gclip_read( struct file * file_s , char *c, size_t size, loff_t *seek) {
-  printk(KERN_NOTICE "read function invoked\n");  
-  /* TODO: implement seek */
-  /* Get the text from the top clip on the stack */
-  char *clip_txt = top->text; 
 
+  /* TODO: implement seek */
+  printk(KERN_NOTICE "read function invokedo\n");
+  
+  /* If nothing on clipboard, end read */
+  if (top == NULL) {
+    return 0;
+  }
+  
+  /* Get the text from the top clip on the stack */
+  char *clip_txt = top->contents; 
+
+  printk(KERN_NOTICE "read function invoked\n");  
   if (size == 1 ) { /* Only read size allowed for now*/ 
-    copy_to_user(c, clip_txt[f_pos++], 1);
-  /* When the end of the text has been reached  */  
-  if (clip_text[f_pos] == '\0') {
+    copy_to_user(c, (clip_txt+f_pos++), 1);
+    /* When the end of the text has been reached  */  
+    if (clip_txt[f_pos] == '\0') {
       f_pos = 0;
-      /* Go to next clip  */
-      top = top ->prev;
+      /* Go to next clip and return 0 to end read */
+      clipping *temp = top->prev;
       kfree(top);
+      top = temp;
       return 0;
     }
     return 1;
@@ -96,28 +99,26 @@ static ssize_t gclip_read( struct file * file_s , char *c, size_t size, loff_t *
 }
 
 
-static ssize_t gclip_write (struct file * file_s, const char __user * user, size_t size , loff_t *seek) {
+static ssize_t gclip_write (struct file * file_s, const char __user * c, size_t size , loff_t *seek) {
   
   printk(KERN_NOTICE "write function invoked\n");  
   /* Allocate mem for a clipping and its contents*/
   /* TODO: deal with size */
   
-  /* Until we hit EOF, buffer input chars */
-  if (c != EOF) {
-    wr_buffer[wrbf_ptr++] = c;
+  /* Not at EOF, buffer input chars */
+  if (*c != 0) {
+    wr_buffer[wr_ptr++] = *c;
   }
   else { /* When we hit EOF, save it all into a clipping */
     clipping *new = new_clipping(sizeof(char) * 1024);
     new->prev = top;
     top = new;
-    memcpy(new->txt 
+    memcpy(new->contents, wr_buffer, wr_ptr);
     if (wr_ptr == 1024) {
       wr_ptr = 0;
       return 1;
     }
   }
-
-  copy_from_user(top->text[wr_ptr++], c, 1);
   
   return 0;
 }
@@ -128,9 +129,8 @@ static ssize_t gclip_write (struct file * file_s, const char __user * user, size
 */
 static clipping *new_clipping(size_t txt_size) {
   clipping *new = kmalloc(sizeof(clipping), GFP_KERNEL);
-  new->contents = kmalloc(sizeof(txt_size));
-  new->next = null;
-  new->prev = null;
+  new->contents = kmalloc(sizeof(txt_size), GFP_KERNEL);
+  new->prev = NULL;
   return new;
 }
 

@@ -2,6 +2,9 @@ obj-m = gclip.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+
+install:
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
 	sudo rm /dev/gclip || true
 	sudo rmmod gclip
 	sudo insmod /home/anthony/dev/c/modules/gclip/gclip.ko
