@@ -51,7 +51,7 @@ static int init(void) {
   else {
     /* driver registration sucessful*/
     major_no = ret_val;
-    printk(KERN_NOTICE "Gclip: device registeed. Major number: %i", major_no);
+    printk(KERN_WARNING "Gclip: device registeed. Major number: %i", major_no);
     wr_buffer = kmalloc(1024, GFP_KERNEL);
     return 0; /*success */
   }
@@ -81,8 +81,7 @@ static ssize_t gclip_read( struct file * file_s , char *c, size_t size, loff_t *
   /* Get the text from the top clip on the stack */
   char *clip_txt = top->contents; 
 
-  printk(KERN_NOTICE "read function invoked\n");  
-  if (size == 1 ) { /* Only read size allowed for now*/ 
+  printk(KERN_NOTICE "read function invoked, size is %d\n\n", size);  
     copy_to_user(c, (clip_txt+f_pos++), 1);
     /* When the end of the text has been reached  */  
     if (clip_txt[f_pos] == '\0') {
@@ -92,35 +91,30 @@ static ssize_t gclip_read( struct file * file_s , char *c, size_t size, loff_t *
       kfree(top);
       top = temp;
       return 0;
-    }
-    return 1;
-  } 
-  return 2; /* Error: only read one byte at a time */
+    } 
+  return 1; /* Error: only read one byte at a time */
 }
 
 
 static ssize_t gclip_write (struct file * file_s, const char __user * c, size_t size , loff_t *seek) {
   
-  printk(KERN_NOTICE "write function invoked\n");  
   /* Allocate mem for a clipping and its contents*/
   /* TODO: deal with size */
   
-  /* Not at EOF, buffer input chars */
-  if (*c != 0) {
-    wr_buffer[wr_ptr++] = *c;
-  }
-  else { /* When we hit EOF, save it all into a clipping */
-    clipping *new = new_clipping(sizeof(char) * 1024);
-    new->prev = top;
-    top = new;
-    memcpy(new->contents, wr_buffer, wr_ptr);
-    if (wr_ptr == 1024) {
-      wr_ptr = 0;
-      return 1;
-    }
-  }
+    /*wr_buffer[wr_ptr++] = *c;*/
+    copy_from_user((wr_buffer+(wr_ptr++)), c, 1);
+    printk(KERN_WARNING "ascii val is %d\n", *c);
+    printk(KERN_WARNING "size is: %d\n", size);
   
-  return 0;
+    if (size == 1) { /*Last char just read in*/
+      clipping *new = new_clipping(sizeof(char) * 1024);
+      new->prev = top;
+      top = new;
+      memcpy(new->contents, wr_buffer, wr_ptr);
+      wr_ptr = 0;
+    }
+  
+  return 1;
 }
 
 
