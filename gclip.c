@@ -5,6 +5,7 @@
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/uaccess.h>
+#include "/home/anthony/dev/gclip/gclip.h"
 
 #define BUFFER_SIZE 4096
 static int major_no = 0;
