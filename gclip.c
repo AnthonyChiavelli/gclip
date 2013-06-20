@@ -6,6 +6,7 @@
 #include <linux/cdev.h>
 #include <linux/uaccess.h>
 
+#define BUFFER_SIZE 4096
 static int major_no = 0;
 static char dev_name[] = "gclip";
 static int init(void);
@@ -15,6 +16,7 @@ static ssize_t gclip_write (struct file *, const char __user *, size_t, loff_t *
 static int f_pos = 0;
 static int wr_ptr = 0;
 static char *wr_buffer;
+
 
 
 /* Represents a "clipping" linked list entry*/
@@ -45,14 +47,14 @@ static int init(void) {
   /*register a char device */
   if ((ret_val = register_chrdev(0, dev_name, &fops)) == -1 ) {
   /* Driver registration failed */
-    printk(KERN_WARNING "Gclip: device register failed");
+    printk(KERN_NOTICE "Gclip: device register failed");
     return ret_val;
   }
   else {
     /* driver registration sucessful*/
     major_no = ret_val;
-    printk(KERN_WARNING "Gclip: device registeed. Major number: %i", major_no);
-    wr_buffer = kmalloc(1024, GFP_KERNEL);
+    printk(KERN_NOTICE "Gclip: device registeed. Major number: %i", major_no);
+    wr_buffer = kmalloc(BUFFER_SIZE, GFP_KERNEL);
     return 0; /*success */
   }
 }
@@ -71,7 +73,6 @@ module_exit(xit);
 static ssize_t gclip_read( struct file * file_s , char *c, size_t size, loff_t *seek) {
 
   /* TODO: implement seek */
-  printk(KERN_NOTICE "read function invokedo\n");
   
   /* If nothing on clipboard, end read */
   if (top == NULL) {
@@ -84,7 +85,7 @@ static ssize_t gclip_read( struct file * file_s , char *c, size_t size, loff_t *
   printk(KERN_NOTICE "read function invoked, size is %d\n\n", size);  
     copy_to_user(c, (clip_txt+f_pos++), 1);
     /* When the end of the text has been reached  */  
-    if (clip_txt[f_pos] == '\0') {
+    if (clip_txt[f_pos-1] == '\0') {
       f_pos = 0;
       /* Go to next clip and return 0 to end read */
       clipping *temp = top->prev;
@@ -97,26 +98,22 @@ static ssize_t gclip_read( struct file * file_s , char *c, size_t size, loff_t *
 
 
 static ssize_t gclip_write (struct file * file_s, const char __user * c, size_t size , loff_t *seek) {
-  
+
   /* Allocate mem for a clipping and its contents*/
-  /* TODO: deal with size */
-  
-    /*wr_buffer[wr_ptr++] = *c;*/
     copy_from_user((wr_buffer+(wr_ptr++)), c, 1);
-    printk(KERN_WARNING "ascii val is %d\n", *c);
-    printk(KERN_WARNING "size is: %d\n", size);
-  
     if (size == 1) { /*Last char just read in*/
-      clipping *new = new_clipping(sizeof(char) * 1024);
+      /* Move data from buffer into struct and start over */
+      wr_buffer[wr_ptr] = '\0';
+      clipping *new = new_clipping((sizeof(char) * wr_ptr) + 1);
       new->prev = top;
       top = new;
-      memcpy(new->contents, wr_buffer, wr_ptr);
+      memcpy(top->contents, wr_buffer, wr_ptr+1);
       wr_ptr = 0;
+      return 1;
     }
   
   return 1;
 }
-
 
 /* Allocates and returns a pointer to a clipping struct
    with a message of given size
